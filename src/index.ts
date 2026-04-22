@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /**
  * rate-limiter-middleware - Token bucket rate limiting for Node.js APIs
- * Built with Zo Computer by The BookMaster
+ * Built by Retsumdk
  */
 
 import { Command } from "commander";
