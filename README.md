@@ -62,4 +62,4 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ---
 
-Built by [The BookMaster](https://github.com/Retsumdk) with [Zo Computer](https://zo.computer)
+Built by [Retsumdk](https://github.com/Retsumdk)
