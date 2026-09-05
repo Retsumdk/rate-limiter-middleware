@@ -1,14 +1,43 @@
 {
   "name": "rate-limiter-middleware",
-  "description": "Token bucket rate limiting for Node.js APIs",
   "version": "1.0.0",
+  "description": "Weighted token-bucket rate limiting for Node.js and Bun APIs \u2014 Redis-backed for distributed use, framework-agnostic handle() plus an Express-style middleware.",
   "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "test": "bun test",
+    "typecheck": "tsc --noEmit",
     "build": "tsc"
   },
+  "keywords": [
+    "rate-limit",
+    "rate-limiter",
+    "token-bucket",
+    "middleware",
+    "express",
+    "redis",
+    "nodejs",
+    "bun",
+    "api"
+  ],
+  "license": "MIT",
+  "author": "Retsumdk",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Retsumdk/rate-limiter-middleware.git"
+  },
   "dependencies": {
-    "commander": "^11.1.0"
+    "ioredis": "^5.11.1"
   },
   "devDependencies": {
     "bun-types": "^1.0.0",

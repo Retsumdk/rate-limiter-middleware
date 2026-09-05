@@ -1,51 +1,58 @@
-#!/usr/bin/env bun
 /**
- * rate-limiter-middleware - Token bucket rate limiting for Node.js APIs
- * Built by Retsumdk
+ * index.ts
+ *
+ * Public entry point for `rate-limiter-middleware`.
+ *
+ * ```ts
+ * import { rateLimit } from "rate-limiter-middleware";
+ *
+ * const limiter = rateLimit({ capacity: 100, refillRate: 10 });
+ * app.use(limiter.middleware());
+ * ```
  */
 
-import { Command } from "commander";
-import { existsSync, readFileSync } from "fs";
-import { join } from "path";
+import { EventEmitter } from "node:events";
+import { MemoryBackend, RedisBackend, type StorageBackend, type RedisBackendOptions } from "./backends.js";
+import { createLimiter, type RateLimiter, type RateLimiterOptions } from "./rateLimiter.js";
+import { DEFAULT_WEIGHTS, type WeightOptions } from "./tokenBucket.js";
 
-interface Config {
-  apiKey?: string;
-  baseUrl: string;
-  timeout: number;
-  retries: number;
+/**
+ * Everything you can configure when building a limiter. Omitted weights fall
+ * back to the default bucket (60 requests per second).
+ */
+export interface RateLimitConfig extends Partial<RateLimiterOptions> {
+  /** Set `backend` to share state across processes instead of in-memory. */
+  backend?: StorageBackend;
+  /** Shortcut to build a Redis distributed backend with these options. */
+  redis?: RedisBackendOptions;
+  /** Per-path weight overrides — `{ "/api/search": { capacity: 30, refillRate: 5 } }`. */
+  perPath?: Record<string, WeightOptions>;
 }
 
-const DEFAULTS: Config = {
-  baseUrl: "https://api.example.com",
-  timeout: 30000,
-  retries: 3,
-};
-
-function loadConfig(): Config {
-  const cfgPath = join(process.cwd(), "config.json");
-  if (existsSync(cfgPath)) {
-    try {
-      return { ...DEFAULTS, ...JSON.parse(readFileSync(cfgPath, "utf-8")) };
-    } catch { /* ignore */ }
+/**
+ * Create a rate limiter. In-memory by default; pass `redis` (or a custom
+ * `backend`) to enable a distributed bucket shared across instances.
+ */
+export function rateLimit(config: RateLimitConfig = {}): RateLimiter {
+  const { redis, perPath = {}, backend: givenBackend, ...opts } = config;
+  let store: StorageBackend;
+  if (givenBackend) {
+    store = givenBackend;
+  } else if (redis) {
+    store = new RedisBackend(redis);
+  } else {
+    store = new MemoryBackend();
   }
-  return { ...DEFAULTS };
+  const base = {
+    capacity: opts.capacity ?? DEFAULT_WEIGHTS.capacity,
+    refillRate: opts.refillRate ?? DEFAULT_WEIGHTS.refillRate,
+  };
+  const fullOpts: RateLimiterOptions = { ...opts, ...base };
+  const emitter = new EventEmitter();
+  return createLimiter(store, fullOpts, perPath, emitter);
 }
 
-async function main(cfg: Config) {
-  console.log(`[${name}] Connected to ${cfg.baseUrl}`);
-  console.log(`[${name}] Timeout: ${cfg.timeout}ms | Retries: ${cfg.retries}`);
-  // TODO: implement your logic here
-  console.log(`[${name}] Done.`);
-}
-
-const program = new Command();
-program.name("rate-limiter-middleware").description("Token bucket rate limiting for Node.js APIs").version("1.0.0")
-  .option("-c, --config <path>", "Config file path", "config.json")
-  .option("-v, --verbose", "Verbose mode")
-  .action(async (opts) => {
-    const cfg = loadConfig();
-    if (opts.verbose) console.log("Verbose mode on");
-    try { await main(cfg); }
-    catch (e) { console.error(`Error: ${e}`); process.exit(1); }
-  });
-program.parse(process.argv);
+export { MemoryBackend, RedisBackend, DEFAULT_WEIGHTS };
+export type { StorageBackend, RedisBackendOptions } from "./backends.js";
+export type { RateLimiter, RateLimiterOptions } from "./rateLimiter.js";
+export type { WeightOptions, BucketState, ConsumeResult } from "./tokenBucket.js";
