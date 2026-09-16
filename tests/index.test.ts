@@ -59,14 +59,18 @@ describe("token bucket core", () => {
 describe("MemoryBackend", () => {
   test("allows while tokens remain", async () => {
     const b = new MemoryBackend();
-    const r1 = await b.consume("k", 3, 1);
+    // A fixed clock: consume() defaults to Date.now(), and the few milliseconds
+    // between two awaits refill a fraction of a token at 1/s, which made the
+    // exact "remaining is 0" assertion below fail intermittently on CI.
+    const now = 1_000_000;
+    const r1 = await b.consume("k", 3, 1, 1, now);
     expect(r1.allowed).toBe(true);
     expect(r1.remaining).toBe(2);
-    await b.consume("k", 3, 1);
-    const r3 = await b.consume("k", 3, 1);
+    await b.consume("k", 3, 1, 1, now);
+    const r3 = await b.consume("k", 3, 1, 1, now);
     // after 3rd consumption remaining is 0
     expect(r3.remaining).toBe(0);
-    const over = await b.consume("k", 3, 1);
+    const over = await b.consume("k", 3, 1, 1, now);
     expect(over.allowed).toBe(false);
   });
 
