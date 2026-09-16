@@ -9,6 +9,8 @@
 
 A strictly-typed **weighted token-bucket rate limiter** for Node.js and Bun. Use it to protect your API from abuse, enforce fair per-user or per-endpoint limits, and — with a single Redis flag — enforce the same limit **across every instance** of a horizontally scaled service.
 
+**▶ Live demo:** [retsumdk.github.io/rate-limiter-middleware](https://retsumdk.github.io/rate-limiter-middleware/) — an in-browser simulation of the same algorithm used here: lazy refill from elapsed time, per-request weight, and the `Retry-After` a denied client receives.
+
 The package ships both a **framework-agnostic `handle()`** (works with `fetch`, Hono, bare Node `http`, etc.) and an **Express-style `middleware()`**.
 
 ---

@@ -5,6 +5,15 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Live in-browser demo of the token-bucket algorithm (`gh-pages` branch):
+  https://retsumdk.github.io/rate-limiter-middleware/ — lazy refill, per-request weight
+  and the `Retry-After` a denied client receives, rendered from the same math as
+  `src/tokenBucket.ts`.
+
 ## [1.0.0] - 2026-09-07
 
 ### Added
