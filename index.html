@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>rate-limiter-middleware — live token-bucket demo</title>
+<meta name="description" content="Interactive demo of the weighted token-bucket algorithm used by rate-limiter-middleware: watch tokens refill lazily, requests spend weight, and denials produce Retry-After." />
+<style>
+  :root {
+    --bg: #0d1117; --panel: #161b22; --border: #30363d; --fg: #e6edf3;
+    --muted: #8b949e; --accent: #58a6ff; --ok: #3fb950; --bad: #f85149;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 15px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  a { color: var(--accent); }
+  header { padding: 28px 20px 8px; max-width: 1100px; margin: 0 auto; }
+  h1 { margin: 0 0 6px; font-size: 22px; letter-spacing: -0.01em; }
+  h2 { margin: 0 0 12px; font-size: 14px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+  header p { margin: 0 0 6px; color: var(--muted); max-width: 70ch; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.92em; background: #21262d; padding: 1px 5px; border-radius: 5px; }
+  main { max-width: 1100px; margin: 0 auto; padding: 12px 20px 48px; display: grid; grid-template-columns: minmax(320px, 1fr) minmax(320px, 1fr); gap: 16px; }
+  @media (max-width: 820px) { main { grid-template-columns: 1fr; } }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+  .span { grid-column: 1 / -1; }
+  .bucket { position: relative; height: 150px; border: 1px solid var(--border); border-radius: 8px; background: linear-gradient(#101820, #0d1117); overflow: hidden; }
+  .fill { position: absolute; inset: auto 0 0 0; background: linear-gradient(180deg, #2f81f7, #1f6feb); transition: height 90ms linear; }
+  .fill.low { background: linear-gradient(180deg, #d29922, #9e6a03); }
+  .fill.empty { background: linear-gradient(180deg, #f85149, #a40e26); }
+  .bucket .level { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-variant-numeric: tabular-nums; font-size: 20px; text-shadow: 0 1px 4px rgba(0,0,0,.7); }
+  .row { display: flex; align-items: center; gap: 10px; margin: 0 0 12px; }
+  .row label { flex: 0 0 148px; color: var(--muted); font-size: 13px; }
+  .row input[type=range] { flex: 1; accent-color: var(--accent); }
+  .row .val { flex: 0 0 74px; text-align: right; font-variant-numeric: tabular-nums; font-size: 13px; }
+  .btns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+  button {
+    background: #21262d; color: var(--fg); border: 1px solid var(--border); border-radius: 6px;
+    padding: 7px 12px; font: inherit; font-size: 13px; cursor: pointer;
+  }
+  button:hover { border-color: #8b949e; }
+  button.primary { background: #1f6feb; border-color: #1f6feb; }
+  button.primary:hover { background: #2f81f7; }
+  button:disabled { opacity: .5; cursor: default; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--border); font-size: 13px; }
+  th { color: var(--muted); font-weight: 500; }
+  th.num, td.num { text-align: right; }
+  .pill { display: inline-block; min-width: 46px; text-align: center; border-radius: 999px; padding: 1px 8px; font-size: 12px; }
+  .pill.ok { background: rgba(63,185,80,.15); color: var(--ok); }
+  .pill.bad { background: rgba(248,81,73,.15); color: var(--bad); }
+  .log { max-height: 250px; overflow: auto; }
+  .stats { display: flex; gap: 22px; flex-wrap: wrap; }
+  .stat { display: flex; flex-direction: column; }
+  .stat b { font-size: 20px; font-variant-numeric: tabular-nums; }
+  .stat span { color: var(--muted); font-size: 12px; }
+  .note { color: var(--muted); font-size: 13px; margin: 10px 0 0; }
+  footer { max-width: 1100px; margin: 0 auto; padding: 0 20px 40px; color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>rate-limiter-middleware — live token-bucket demo</h1>
+  <p>
+    A browser-side simulation of the exact algorithm in
+    <code>src/tokenBucket.ts</code> and the in-memory backend. Tokens refill lazily from elapsed
+    time (no timers), every request spends a configurable weight, and a request that cannot pay
+    its weight is denied with the <code>Retry-After</code> the middleware would send.
+  </p>
+  <p>
+    <a href="https://github.com/Retsumdk/rate-limiter-middleware">Repository</a> ·
+    <a href="https://www.npmjs.com/package/rate-limiter-middleware">npm</a> ·
+    MIT licensed
+  </p>
+</header>
+
+<main>
+  <section class="panel">
+    <h2>Bucket</h2>
+    <div class="bucket">
+      <div class="fill" id="fill"></div>
+      <div class="level" id="level">100 / 100 tokens</div>
+    </div>
+    <p class="note" id="hint">Send a request, or start a traffic run, to watch the bucket drain and refill.</p>
+  </section>
+
+  <section class="panel">
+    <h2>Configuration</h2>
+    <div class="row">
+      <label for="capacity">Capacity (burst)</label>
+      <input type="range" id="capacity" min="1" max="200" step="1" value="100" />
+      <span class="val" id="capacityVal">100</span>
+    </div>
+    <div class="row">
+      <label for="rate">Refill rate</label>
+      <input type="range" id="rate" min="0.5" max="50" step="0.5" value="10" />
+      <span class="val" id="rateVal">10/s</span>
+    </div>
+    <div class="row">
+      <label for="cost">Request weight</label>
+      <input type="range" id="cost" min="0.5" max="100" step="0.5" value="1" />
+      <span class="val" id="costVal">1</span>
+    </div>
+    <div class="row">
+      <label for="tps">Traffic</label>
+      <input type="range" id="tps" min="1" max="60" step="1" value="12" />
+      <span class="val" id="tpsVal">12/s</span>
+    </div>
+    <div class="btns">
+      <button class="primary" id="send">Send request</button>
+      <button id="start">Start traffic</button>
+      <button id="stop" disabled>Stop</button>
+      <button id="reset">Reset</button>
+    </div>
+    <p class="note" id="shape">
+      With the defaults (100 tokens, +10/s, weight 1, 12 req/s) the bucket drains in about 50 s and
+      then admits roughly the refill rate — the classic burst-then-steady shape.
+    </p>
+  </section>
+
+  <section class="panel">
+    <h2>Decisions</h2>
+    <div class="log">
+      <table>
+        <thead>
+          <tr><th>t</th><th>Decision</th><th class="num">Tokens left</th><th class="num">Retry-After</th></tr>
+        </thead>
+        <tbody id="log"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Counters</h2>
+    <div class="stats">
+      <div class="stat"><b id="sTotal">0</b><span>requests</span></div>
+      <div class="stat"><b id="sAllowed" style="color:var(--ok)">0</b><span>allowed</span></div>
+      <div class="stat"><b id="sDenied" style="color:var(--bad)">0</b><span>denied</span></div>
+      <div class="stat"><b id="sRate">0%</b><span>denied share</span></div>
+    </div>
+    <p class="note">
+      <code>Retry-After</code> is reported in whole seconds, floored at 1, matching the header the
+      middleware sets — the same rounding a client would act on.
+    </p>
+  </section>
+</main>
+
+<footer>
+  This page simulates the algorithm in the published package; it does not call a server, and it
+  keeps no state beyond the tab you have open.
+</footer>
+
+<script>
+// Mirrors src/tokenBucket.ts (`refill`) and MemoryBackend.consume(): the bucket is
+// rehydrated from elapsed time on demand - no timers - and a request is denied when
+// tokens - cost would leave the bucket below zero, with retryAfter = ceil(shortfall / rate).
+const EPSILON = 1e-9;
+
+const state = { tokens: 100, last: performance.now() };
+let counters = { total: 0, allowed: 0, denied: 0 };
+let timer = null;
+// Fractional requests owed by the traffic run, carried between 250 ms ticks.
+let carry = 0;
+
+const el = (id) => document.getElementById(id);
+const cfg = () => ({
+  capacity: Number(el("capacity").value),
+  refillRate: Number(el("rate").value),
+  cost: Number(el("cost").value),
+  tps: Number(el("tps").value),
+});
+
+function refill(nowMs) {
+  const { capacity, refillRate } = cfg();
+  if (refillRate > 0 && nowMs > state.last) {
+    const added = ((nowMs - state.last) / 1000) * refillRate;
+    if (added > 0) {
+      state.tokens = Math.min(capacity, state.tokens + added);
+      state.last = nowMs;
+    }
+  }
+  return state.tokens;
+}
+
+function consume(nowMs, cost) {
+  const { refillRate } = cfg();
+  const tokens = refill(nowMs);
+  if (tokens - cost < -EPSILON) {
+    const shortfall = cost - tokens;
+    return {
+      allowed: false,
+      remaining: Math.max(0, tokens),
+      retryAfterMs: refillRate > 0 ? Math.ceil((shortfall / refillRate) * 1000) : Infinity,
+    };
+  }
+  state.tokens = tokens - cost;
+  state.last = nowMs;
+  return { allowed: true, remaining: state.tokens, retryAfterMs: 0 };
+}
+
+function request(cost) {
+  const now = performance.now();
+  const decision = consume(now, cost);
+  counters.total += 1;
+  counters[decision.allowed ? "allowed" : "denied"] += 1;
+  logRow(decision);
+  renderCounters();
+  renderBucket();
+  return decision;
+}
+
+function logRow(decision) {
+  const body = el("log");
+  const tr = document.createElement("tr");
+  const retry = decision.allowed
+    ? "—"
+    : decision.retryAfterMs === Infinity
+      ? "∞"
+      : String(Math.max(1, decision.retryAfterMs / 1000)) + "s";
+  tr.innerHTML =
+    '<td>' + new Date().toLocaleTimeString() + "</td>" +
+    '<td><span class="pill ' + (decision.allowed ? "ok" : "bad") + '">' +
+    (decision.allowed ? "allow" : "deny") + "</span></td>" +
+    '<td class="num">' + decision.remaining.toFixed(1) + "</td>" +
+    '<td class="num">' + retry + "</td>";
+  body.prepend(tr);
+  while (body.childElementCount > 60) body.lastElementChild.remove();
+}
+
+function renderCounters() {
+  el("sTotal").textContent = counters.total;
+  el("sAllowed").textContent = counters.allowed;
+  el("sDenied").textContent = counters.denied;
+  const share = counters.total === 0 ? 0 : Math.round((counters.denied / counters.total) * 100);
+  el("sRate").textContent = share + "%";
+}
+
+function renderBucket() {
+  const { capacity } = cfg();
+  const tokens = Math.min(capacity, state.tokens);
+  const pct = Math.max(0, Math.min(100, (tokens / capacity) * 100));
+  const fill = el("fill");
+  fill.style.height = pct + "%";
+  fill.className = "fill" + (pct < 1 ? " empty" : pct < 20 ? " low" : "");
+  el("level").textContent = tokens.toFixed(1) + " / " + capacity + " tokens";
+}
+
+function readControls() {
+  const { capacity, refillRate, cost, tps } = cfg();
+  el("capacityVal").textContent = capacity;
+  el("rateVal").textContent = refillRate + "/s";
+  el("costVal").textContent = cost;
+  el("tpsVal").textContent = tps + "/s";
+  if (state.tokens > capacity) state.tokens = capacity;
+  renderBucket();
+  // Describe what the current settings actually do, instead of a fixed claim:
+  // the burst lasts capacity / (spend rate - refill rate) seconds.
+  const spend = tps * cost;
+  el("shape").textContent =
+    spend > refillRate
+      ? `At ${tps} req/s of weight ${cost} against a +${refillRate}/s refill, the ${capacity}-token burst lasts about ${Math.round(capacity / (spend - refillRate))} s, then the bucket admits roughly the refill rate.`
+      : `At ${tps} req/s of weight ${cost} against a +${refillRate}/s refill the bucket never empties: it is refilled faster than it is spent.`;
+}
+
+function startTraffic() {
+  if (timer) return;
+  el("start").disabled = true;
+  el("stop").disabled = false;
+  el("hint").textContent = "Traffic running — denials carry the Retry-After a client would receive.";
+  carry = 0;
+  // The tick is 250 ms, so four ticks are one second: accumulate the configured
+  // requests-per-second and fire the whole requests that are due.
+  timer = setInterval(() => {
+    const { tps, cost } = cfg();
+    carry += tps / 4;
+    const due = Math.floor(carry);
+    carry -= due;
+    for (let i = 0; i < due; i += 1) request(cost);
+  }, 250);
+}
+
+function stopTraffic() {
+  if (!timer) return;
+  clearInterval(timer);
+  timer = null;
+  carry = 0;
+  el("start").disabled = false;
+  el("stop").disabled = true;
+  el("hint").textContent = "Traffic stopped. The bucket keeps refilling lazily, with no timer behind it.";
+}
+
+function reset() {
+  stopTraffic();
+  const capacity = cfg().capacity;
+  state.tokens = capacity;
+  state.last = performance.now();
+  counters = { total: 0, allowed: 0, denied: 0 };
+  el("log").replaceChildren();
+  renderCounters();
+  renderBucket();
+  el("hint").textContent = "Reset to a full bucket.";
+}
+
+for (const id of ["capacity", "rate", "cost", "tps"]) {
+  el(id).addEventListener("input", readControls);
+}
+el("send").addEventListener("click", () => request(cfg().cost));
+el("start").addEventListener("click", startTraffic);
+el("stop").addEventListener("click", stopTraffic);
+el("reset").addEventListener("click", reset);
+
+readControls();
+renderCounters();
+// Paint the lazy refill continuously; the bucket itself only changes on a request.
+(function frame() {
+  refill(performance.now());
+  renderBucket();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
